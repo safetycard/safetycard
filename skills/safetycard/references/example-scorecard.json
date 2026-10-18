@@ -20,9 +20,9 @@
     "sub_agents": "yes",
     "external_communication": "yes"
   },
-  "headline": "As shipped, model-written code runs inside the developer's own Python process behind a filter its maintainers say is not a security boundary, with no approval gate and no separation between web content and instructions. The dominant risk is goal hijack: a web page read during a run can steer code that executes with the host's authority. Strong isolation exists but is opt-in, and the framework gives developers no oversight primitive for the tools they register.",
+  "headline": "As shipped, model-written code runs inside the developer's own Python process behind a filter its maintainers say is not a security boundary, with no human approval gate and no separation between web content and instructions. The dominant risk is goal hijack: a web page read during a run can steer code that executes with the host's authority. Strong isolation exists but is opt-in, and the framework gives developers no oversight primitive for the tools they register.",
   "safe_setup": {
-    "intro": "smolagents keeps its own footprint small: agents get only the tools you list, Hub code needs an explicit trust flag, and every run stops after 20 steps. Model-written code runs in your own Python process by default and there is no approval step, so the safest setup moves that code into a sandbox and puts the boundaries around the process yourself.",
+    "intro": "smolagents keeps its own footprint small: agents get only the tools you list, Hub code needs an explicit trust flag, and every run stops after 20 steps. Model-written code runs in your own Python process by default and there is no human approval step, so the safest setup moves that code into a sandbox and puts the boundaries around the process yourself.",
     "steps": [
       {
         "setup": "A dedicated, low-limit key",
@@ -137,7 +137,7 @@
   "criteria": [
     {
       "id": "C1",
-      "summary": "smolagents has no notion of an agent identity or per-request authorization: every tool runs in the host process with whatever credentials the developer's environment holds, and importing the remote-executor module silently loads a .env file from the working directory into that environment. The default local executor blocks model code from importing os, which narrows access a little, but its maintainers state it is not a security boundary.",
+      "summary": "smolagents has no notion of an agent identity or per-request authorization: every tool runs in the host process with whatever credentials the developer's environment holds, and importing the remote-executor module silently loads a `.env` file from the working directory into that environment. The default local executor blocks model code from importing os, which narrows access a little, but its maintainers state it is not a security boundary.",
       "parameters": {
         "S": {
           "level": 0,
@@ -203,12 +203,12 @@
     },
     {
       "id": "C2",
-      "summary": "There is no approval mechanism anywhere in the tool execution path. Step callbacks fire after a step has already run, and interrupt() is checked between steps. Under the frameworks rule this is L0 even though the bundled tools are read-only: any tool a developer registers executes without a gate, and nothing offers checkpoints or dry-runs.",
+      "summary": "There is no human approval mechanism anywhere in the tool execution path. Step callbacks fire after a step has already run, and interrupt() is checked between steps. Under the frameworks rule this is L0 even though the bundled tools are read-only: any tool a developer registers executes without a gate, and nothing offers checkpoints or dry-runs.",
       "parameters": {
         "S": {
           "level": 0,
           "status": "verified",
-          "finding": "No approval; step_callbacks run after a step executes.",
+          "finding": "No human approval; step_callbacks run after a step executes.",
           "evidence": [
             {
               "search": "rg -n -S 'approv|confirm|human_in|ask_user'",
@@ -225,7 +225,7 @@
               "lines": "623"
             }
           ],
-          "gap": "No approval primitive; L1 needs any human approval hook in the tool executor."
+          "gap": "No human approval primitive; L1 needs any human approval hook in the tool executor."
         },
         "C": {
           "level": 0,
@@ -242,7 +242,7 @@
         "D": {
           "level": 0,
           "status": "verified",
-          "finding": "No approval primitive to default on.",
+          "finding": "No human approval primitive to default on.",
           "evidence": [
             {
               "search": "rg -n -S 'approv|confirm|allow|permission'",
@@ -477,7 +477,7 @@
     },
     {
       "id": "C5",
-      "summary": "Assume an attacker controls a web page or search result the agent reads. Nothing in smolagents limits what happens next: untrusted content enters the agent's memory like any other observation, the hijacked agent can still fetch any URL (an outbound channel for leaking data), and every tool the developer registered remains available with no approval step. The worst case is therefore data leakage plus whatever irreversible actions the developer's tools allow, with no human involved.",
+      "summary": "Assume an attacker controls a web page or search result the agent reads. Nothing in smolagents limits what happens next: untrusted content enters the agent's memory like any other observation, the hijacked agent can still fetch any URL (an outbound channel for leaking data), and every tool the developer registered remains available with no human approval step. The worst case is therefore data leakage plus whatever irreversible actions the developer's tools allow, with no human involved.",
       "parameters": {
         "S": {
           "level": 0,
@@ -552,12 +552,12 @@
     },
     {
       "id": "C6",
-      "summary": "Agent memory lives only in the running process and is never persisted, which keeps poisoning session-scoped. The concern is configuration: both the CLI and the remote-executor module call load_dotenv(), which reads a .env file from the current working directory. If a user runs an agent inside a cloned repository, that repository can set environment variables such as a model API base URL or a sandbox provider key without any prompt.",
+      "summary": "Agent memory lives only in the running process and is never persisted, which keeps poisoning session-scoped. The concern is configuration: both the CLI and the remote-executor module call load_dotenv(), which reads a `.env` file from the current working directory. If a user runs an agent inside a cloned repository, that repository can set environment variables such as a model API base URL or a sandbox provider key without any prompt.",
       "parameters": {
         "S": {
           "level": 1,
           "status": "verified",
-          "finding": ".env silently loaded from the working directory; no memory persistence.",
+          "finding": "`.env` silently loaded from the working directory; no memory persistence.",
           "evidence": [
             {
               "file": "src/smolagents/cli.py",
@@ -575,7 +575,7 @@
               "contains": "def save("
             }
           ],
-          "gap": ".env loads silently from the working directory; L2 needs security-relevant config to come only from user scope."
+          "gap": "`.env` loads silently from the working directory; L2 needs security-relevant config to come only from user scope."
         },
         "C": {
           "level": 1,
@@ -593,7 +593,7 @@
               "contains": "observations"
             }
           ],
-          "gap": "The .env path is uncontrolled; L2 needs every auto-loaded path controlled."
+          "gap": "The `.env` path is uncontrolled; L2 needs every auto-loaded path controlled."
         },
         "D": {
           "level": 2,
@@ -611,7 +611,7 @@
         "B": {
           "level": 2,
           "status": "inferred",
-          "finding": "A repo .env persists across runs and could set OPENAI_BASE_URL (read by the openai SDK) or E2B_API_KEY; memory is session-scoped.",
+          "finding": "A repo `.env` persists across runs and could set OPENAI_BASE_URL (read by the openai SDK) or E2B_API_KEY; memory is session-scoped.",
           "evidence": [
             {
               "file": "src/smolagents/remote_executors.py",
@@ -624,7 +624,7 @@
               "contains": "timing: Timing"
             }
           ],
-          "gap": "A repo .env persists across runs; L3 needs nothing workspace-controlled to persist into behaviour."
+          "gap": "A repo `.env` persists across runs; L3 needs nothing workspace-controlled to persist into behaviour."
         }
       },
       "caps": [
@@ -968,7 +968,7 @@
       ]
     },
     {
-      "summary": ".env in the working directory is loaded at import time, letting a cloned repo set endpoints or sandbox credentials (impact inferred).",
+      "summary": "`.env` in the working directory is loaded at import time, letting a cloned repo set endpoints or sandbox credentials (impact inferred).",
       "criterion": "C6",
       "owasp": [
         "ASI06"
@@ -1046,7 +1046,7 @@
       "playbook": "Playbook 3, step 1"
     },
     {
-      "summary": "Load .env only from the user's config directory, never the working directory.",
+      "summary": "Load `.env` only from the user's config directory, never the working directory.",
       "criterion": "C6",
       "parameter": "S",
       "from_level": 1,

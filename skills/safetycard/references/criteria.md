@@ -34,7 +34,7 @@ C2, C5, and C10 also carry **S for tool servers** anchors (see SKILL.md, "Scorin
 ## C1 · Identity & least privilege
 **OWASP:** ASI03 Identity & Privilege Abuse · T3 Privilege Compromise · T9 Identity Spoofing · Playbook 4
 **Question:** Does the agent act with an identity scoped to its job, with authority checked per request rather than inherited from whoever launched it?
-**Risk surface:** every credential the agent or its tools can use — its own service identity, the operator's ambient credentials (cloud default chains, kubeconfig, `gh` auth, SSH agent), OAuth grants, API keys, and the environment passed to subprocesses.
+**Risk surface:** every credential the agent or its tools can use — its own service identity, the operator's ambient credentials (cloud default chains, Kubernetes config, `gh` auth, SSH agent), OAuth grants, API keys, and the environment passed to subprocesses.
 **Why it matters:** if the agent is hijacked, its privilege *is* the attacker's privilege. The confused-deputy pattern (agent more privileged than the user asking it) is the most common route from prompt injection to real damage.
 **Architecture note:** a local CLI necessarily runs as the OS user. For CLIs, S and C measure how much the agent *narrows* that ambient authority (env scrubbing for subprocesses, scoped tokens, refusing to use credentials it wasn't given).
 
@@ -56,7 +56,7 @@ C2, C5, and C10 also carry **S for tool servers** anchors (see SKILL.md, "Scorin
 **D · Default & tamper-resistance**
 - L0: Default install runs with admin/owner privilege; least privilege requires manual hardening.
 - L1: Narrower default exists but is trivially widened by an env var or a value the workspace controls.
-- L2: Reasonable default role; widening is an operator config change without warning.
+- L2: Reasonable default role; widening is an operator config change nobody is warned about.
 - L3: Default is read-only or near-minimal; write requires explicit operator elevation.
 - L4: L3, and no tool or input can alter the agent's own role/permissions; elevation is time-bounded and automatically reverts.
 
@@ -71,7 +71,7 @@ Rate what the agent's credentials can do when its authorization layer fails, cou
 - L4: Read-only or narrowly scoped writes, single tenant, credentials live minutes and are revocable.
 
 **Caps:** C1-SELFESC — a tool lets the agent modify its own roles, permissions, or credential scope → ≤ 0.25. C1-PASSTHRU — the server accepts a client's token and forwards it to a downstream API (MCP token passthrough) → ≤ 0.25.
-**Where to look:** Helm `values.yaml` + RBAC templates, IAM/Terraform, credential-loading code (`DefaultAzureCredential`, `boto3.Session()`, `google.auth.default`, kubeconfig loaders), OAuth scope lists, `subprocess(..., env=...)`, per-user authorization middleware.
+**Where to look:** Helm `values.yaml` + RBAC templates, IAM/Terraform, credential-loading code (`DefaultAzureCredential`, `boto3.Session()`, `google.auth.default`, Kubernetes config loaders), OAuth scope lists, `subprocess(..., env=...)`, per-user authorization middleware.
 **Traps:** a "read-only" chart that also grants `impersonate` or `secrets: get`; a single service account serving all users with no per-user check (confused deputy); auth checked in the HTTP layer but not in the tool executor reached from the agent loop; credentials scoped correctly for the agent but passed whole to spawned tools.
 
 ---
@@ -85,8 +85,8 @@ Rate what the agent's credentials can do when its authorization layer fails, cou
 **Why it matters:** models comply with polite, benign-looking requests that lead to unsafe outcomes, and other parties in the conversation (customers, colleagues, injected content) can't be told apart from the principal by the model. A deterministic human gate catches what alignment misses.
 
 **S · Strength — how good is the approval?**
-- L0: No approval, or "approval" by the model itself / an LLM judge only.
-- L1: One blanket approval (session-wide "allow all", an initial "trust this folder" that unlocks everything), or an LLM classifier auto-approves with human fallback only on low confidence.
+- L0: Nothing asks for approval, or "approval" by the model itself / an LLM judge only.
+- L1: One blanket approval (session-wide "allow all", an initial "trust this folder" that unlocks everything), or an LLM classifier approves on its own, with human fallback only on low confidence.
 - L2: Per-call approval, but the approver sees a model-written summary rather than the exact command/arguments/diff (the model can mislead the approver).
 - L3: Per-call approval showing the exact call (full command, arguments, file diff, recipient), with risk tiers deciding what needs a human.
 - L4: L3, plus argument-level policy (allow/deny/escalate rules on parsed arguments), the approved call is exactly the executed call (no change between approval and execution), and reject/terminate are first-class outcomes.
@@ -102,12 +102,12 @@ Rate what the agent's credentials can do when its authorization layer fails, cou
 - L0: The most powerful tool (shell, code exec, generic HTTP) is exempt.
 - L1: Only tools flagged `requires_approval` are gated, and some mutating tools aren't flagged.
 - L2: All built-in tools gated; MCP/plugin tools, sub-agents, or background tasks bypass.
-- L3: Every tool path, including extensions and sub-agents, traverses the gate; auto-approved commands are a verified read-only allowlist.
+- L3: Every tool path, including extensions and sub-agents, traverses the gate; commands that skip the prompt are a verified read-only allowlist.
 - L4: L3, plus unknown tools are rejected by default, compound commands are parsed (`&&`, `;`, `|`, `$( )`, backticks) and each part is checked, and allowlists match on parsed commands, not string prefixes.
 
 **D · Default & tamper-resistance**
 - L0: Approval is opt-in.
-- L1: On by default, but the model, a tool result, or a repo/workspace file can switch to auto-approve.
+- L1: On by default, but the model, a tool result, or a repo/workspace file can switch it to automatic approval.
 - L2: On by default; an env var or config file disables it silently; "always allow" decisions accumulate without visibility.
 - L3: On by default; disabling needs an explicit, loudly named operator flag; persisted allow-rules live in user scope, not the repo.
 - L4: L3, plus elevated modes are session- or time-bounded and approval must come from an authenticated principal, never from chat content or another agent.
@@ -138,7 +138,7 @@ If the default configuration permits no consequential action at all, enforced in
 - L0: Raw passthrough: arbitrary shell string, arbitrary URL, arbitrary SQL, unbounded quantities.
 - L1: Denylist/regex filtering (blocked words, dangerous-command lists).
 - L2: Typed schemas and some validation, but escapable (path `startswith` without `realpath`, symlinks, URL checked before redirects, SQL "read-only" by checking it starts with `SELECT`).
-- L3: Allowlist validation in code: resolved-path containment, URL/host allowlists that recheck redirects and block internal addresses (localhost, `169.254.169.254`), parameterized queries, numeric bounds.
+- L3: Allowlist validation in code: resolved-path containment, URL/host allowlists that recheck redirects and block internal addresses (localhost, cloud metadata endpoints), parameterized queries, numeric bounds.
 - L4: L3, and general tools are replaced by narrow ones (`create_issue` instead of `http_request`; `read_file(path)` instead of shell `cat`), with validation robust to races (open-then-check, `O_NOFOLLOW`).
 
 **C · Coverage**
@@ -192,7 +192,7 @@ If the default configuration permits no consequential action at all, enforced in
 **D · Default & tamper-resistance**
 - L0: Off by default (→ G1).
 - L1: On, but the model can request unsandboxed execution and it's granted without a human, or a workspace file disables it (→ G2).
-- L2: On; disabled by an env var or config option without warning; or silently falls back to host execution when the sandbox is unavailable.
+- L2: On; disabled by an env var or config option that nobody is warned about; or silently falls back to host execution when the sandbox is unavailable.
 - L3: On; disabling requires an explicit operator flag; escalation to unsandboxed execution is a per-call human approval.
 - L4: L3, plus the sandbox policy is defined outside anything the model or workspace can write.
 
@@ -202,14 +202,14 @@ For an in-process sandbox, an escape lands inside the agent's own process: rate 
 
 Exception for hardened capability runtimes: if the runtime is memory-safe **and** no `unsafe`/native code is reachable from scripts (check the engine's source at the pinned version, e.g. typed-array or buffer implementations), **and** the host recovers from engine panics and caps stack depth and memory, then a realistic failure is misuse of the injected functions or a crash, not arbitrary code in the host. Rate B by what the injected functions reach, counting independent layers that still hold, at most L3 (a crash still costs availability). Removing script-reachable features that use `unsafe` (e.g. deleting `ArrayBuffer` and typed-array globals) counts.
 
-- L0: Host-equivalent: Docker socket mounted, `--privileged`, host network plus root, home directory or `~/.ssh`/`~/.aws` mounted, or credentials in the sandbox environment.
+- L0: Host-equivalent: Docker socket mounted, a privileged container, host network plus root, home directory or `~/.ssh`/`~/.aws` mounted, or credentials in the sandbox environment.
 - L1: Broad host filesystem mount or full network egress with credentials available.
 - L2: Workspace mounted read-write plus unrestricted network.
 - L3: Workspace-only mount, no secrets in the environment, network egress off or allowlisted, CPU/memory/PID limits.
 - L4: Ephemeral (destroyed per run or per call), no network or proxy-allowlisted egress, no secrets, resource limits, and nothing persists to the host except reviewed outputs.
 
-**Caps:** C4-HOSTROOT — Docker socket mounted, `--privileged`, or root plus host network in the default sandbox → ≤ 0.25.
-**Where to look:** subprocess/exec call sites, Dockerfiles and run arguments (`-v`, `--network`, `--cap-*`, `--privileged`, `user:`), sandbox backends and their defaults, fallback logic when Docker is missing, how tool processes get their env.
+**Caps:** C4-HOSTROOT — Docker socket mounted, a privileged container, or root plus host network in the default sandbox → ≤ 0.25.
+**Where to look:** subprocess/exec call sites, Dockerfiles and run arguments (`-v`, `--network`, `--cap-*`, privileged mode, `user:`), sandbox backends and their defaults, fallback logic when Docker is missing, how tool processes get their env.
 **Traps:** an in-process "safe" Python executor documented by its own authors as not a security boundary (check their docs and issues for the caveat, then rate L1); a sandbox for the `python` tool while `bash` runs on host; the container receiving `env=os.environ`; "sandbox" mode that only restricts writes while allowing full network (exfiltration path); a fallback that runs on host when the container fails to start.
 
 ---
@@ -272,7 +272,7 @@ If the agent serves several users or tenants and a hijack can reach other users'
 **Why it matters:** a one-time injection that writes itself into memory or a project config becomes a permanent backdoor that fires in every later session, often for other users too.
 
 **S · Strength — how are writes and loads controlled?**
-- L0: The model can write anything to persistent memory, and it's re-injected as trusted context; or repo-controlled files can add tools, hooks, MCP servers, or auto-approve rules with no prompt.
+- L0: The model can write anything to persistent memory, and it's re-injected as trusted context; or repo-controlled files can add tools, hooks, MCP servers, or rules that approve actions automatically, without a prompt.
 - L1: Writes are logged but not validated; instruction files load silently as high-priority context.
 - L2: Memory entries carry provenance and are presented as data; project config can't change security settings, but instruction files still load silently.
 - L3: Memory writes are gated (human approval, validation, or source restrictions) with expiry; security-relevant project config (hooks, MCP, permissions) requires an explicit workspace-trust decision.
@@ -341,7 +341,7 @@ If the agent serves several users or tenants and a hijack can reach other users'
 - L3: Sandboxed per extension with its own scoped credentials and no access to other extensions' data.
 - L4: L3, plus network and file access limited to what the extension declares.
 
-**Caps:** C7-RCELOAD — by default the agent executes remote code or deserializes untrusted model files without consent → ≤ 0.25.
+**Caps:** C7-RCELOAD — by default the agent executes remote code or deserializes untrusted model files unless the user consents → ≤ 0.25.
 **Where to look:** plugin loaders, MCP client config and launch commands, model-loading calls, package-install tools exposed to the model, update mechanisms, how extension processes get their environment.
 **Traps:** a safe API default (`trust_remote_code=False`) with every official example setting it `True` (score the API default, footnote the examples, and lower D one level); version pins with an `@latest` fallback; extension lists refetched each session without detecting changes.
 
@@ -356,7 +356,7 @@ If the agent serves several users or tenants and a hijack can reach other users'
 - L0: Plaintext secrets in committed config or defaults; secrets routinely placed into model context; full request/response logging including auth headers.
 - L1: Secrets from env vars; some masking in one path.
 - L2: Type-level masking (`SecretStr`, redacted reprs) and log filters on main paths; stored credentials in plaintext files with restrictive permissions.
-- L3: OS keychain or secret manager, encrypted at rest; redaction before logs *and* before model-bound messages on all major paths.
+- L3: OS credential store or secret manager, encrypted at rest; redaction before logs *and* before model-bound messages on all major paths.
 - L4: L3, plus secrets never enter model context by design (opaque handles substituted at execution time), short-lived tokens, and output scanning for secret patterns.
 
 **C · Coverage — paths: logs, traces/telemetry, model-bound messages, error messages and stack traces, saved transcripts, crash reporters, subprocess environments**
@@ -382,7 +382,7 @@ If the agent serves several users or tenants and a hijack can reach other users'
 
 **Caps:** C8-MODELSECRETS — secret material is routinely included in prompts sent to the model provider in the default flow → ≤ 0.25.
 **Where to look:** config loaders, `.env` handling, logging statements around HTTP clients and tool I/O, telemetry SDK init (Sentry, PostHog, Segment) and their defaults, transcript/session storage, redaction helpers and every call site.
-**Traps:** `SecretStr` is not encryption; redaction in logs but not in tool results sent to the model; Sentry capturing request bodies or local variables; transcripts saved world-readable.
+**Traps:** `SecretStr` is not encryption; redaction in logs but not in tool results sent to the model; Sentry capturing request bodies or local variables; transcripts saved readable by every local user.
 
 ---
 
@@ -458,7 +458,7 @@ If the agent serves several users or tenants and a hijack can reach other users'
 - L4: L3, plus hard ceilings that configuration can't exceed.
 
 **B · Blast radius — what happens before the limits trip, or after you press stop?**
-- L0: No ceiling: a runaway can spend, act, or loop indefinitely.
+- L0: No ceiling: a runaway can spend, act, or loop with no end.
 - L1: Ceilings exist but are very large (hours, unlimited spend), or stopping leaves work running (background processes, unkillable threads, scheduled tasks).
 - L2: Moderate ceilings; stopping ends the loop but in-flight tool calls run to completion.
 - L3: Tight per-run time and cost ceilings; stopping ends the loop and cancels pending calls; nothing scheduled continues.

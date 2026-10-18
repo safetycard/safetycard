@@ -1,7 +1,7 @@
 {
   "name": "safetycard",
   "description": "Security and safety review for AI agents, coding agents and MCP servers: a scorecard of their guardrails against the OWASP Top 10 for LLM and agentic applications.",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "author": {
     "name": "SafetyCard",
     "url": "https://safetycard.dev"
