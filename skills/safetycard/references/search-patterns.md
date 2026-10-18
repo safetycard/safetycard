@@ -18,7 +18,7 @@ Exclude tests and examples when establishing defaults, then search them separate
 
 ## C1 Identity & least privilege
 ```
-DefaultAzureCredential|boto3\.(Session|client)\(|google\.auth\.default|load_kube_config|load_incluster_config|kubeconfig
+DefaultAzureCredential|boto3\.(Session|client)\(|google\.auth\.default|load_kube_config|load_incluster_config|kube.?config
 ClusterRole|cluster-admin|verbs:\s*\[?\s*["']?\*|resources:\s*\[?\s*["']?\*|impersonate|serviceAccountName
 scopes?\s*[=:]|oauth|on_behalf_of|token_exchange|assume_role|AssumeRole|sts
 env\s*=\s*(os\.environ|process\.env|\{\s*\*\*os\.environ)|os\.environ\.copy\(\)|inheritEnv|env_clear
@@ -82,7 +82,7 @@ namespace|user_id|tenant|partition|filter=   # isolation in retrieval
 summar|compact|condens   # summaries that persist
 AGENTS\.md|CLAUDE\.md|GEMINI\.md|\.cursorrules|\.windsurfrules|copilot-instructions|rules\.md|\.clinerules
 settings\.json|\.mcp\.json|mcp_servers|hooks|pre_tool|post_tool|on_start|workspace[_ ]trust|trust(ed)?_folder
-load_dotenv|dotenv\.config|find_dotenv|BASE_URL|base_url|_ENDPOINT|api_base   # workspace .env or env vars redirecting endpoints
+load_dotenv|dotenv\.config|find_dotenv|BASE_URL|base_url|_ENDPOINT|api_base   # workspace `.env` or env vars redirecting endpoints
 ```
 
 ## C7 Third-party extensions
@@ -101,7 +101,7 @@ sha256|digest|checksum|signature|sigstore|cosign|slsa|sbom|cyclonedx|spdx
 ```
 api[_-]?key|secret|token|password|passwd|credential|private[_-]?key|BEGIN (RSA|OPENSSH|EC) PRIVATE
 SecretStr|SecretString|mask|redact|scrub|sanitiz|\*\*\*\*|obfuscat
-keyring|keychain|libsecret|credential[_ ]manager|vault|secretsmanager|kms|sops
+key(ring|chain)|libsecret|credential[_ ]manager|vault|secretsmanager|kms|sops
 logger\.(info|debug)\(.*(request|response|headers|body|payload|messages)|print\(.*(token|key|secret)
 sentry|posthog|segment|mixpanel|amplitude|telemetry|analytics|opentelemetry|send_default_pii|capture_locals|include_local_variables
 \.env|dotenv|chmod|0o600|0600   # storage and permissions

@@ -25,11 +25,11 @@
 | C10 | Limits & kill switch | L2 | L2 | L2 | L1 | 0.45 | none | **0.45** | High |
 
 
-As shipped, model-written code runs inside the developer's own Python process behind a filter its maintainers say is not a security boundary, with no approval gate and no separation between web content and instructions. The dominant risk is goal hijack: a web page read during a run can steer code that executes with the host's authority. Strong isolation exists but is opt-in, and the framework gives developers no oversight primitive for the tools they register.
+As shipped, model-written code runs inside the developer's own Python process behind a filter its maintainers say is not a security boundary, with no human approval gate and no separation between web content and instructions. The dominant risk is goal hijack: a web page read during a run can steer code that executes with the host's authority. Strong isolation exists but is opt-in, and the framework gives developers no oversight primitive for the tools they register.
 
 ## Safest setup
 
-smolagents keeps its own footprint small: agents get only the tools you list, Hub code needs an explicit trust flag, and every run stops after 20 steps. Model-written code runs in your own Python process by default and there is no approval step, so the safest setup moves that code into a sandbox and puts the boundaries around the process yourself.
+smolagents keeps its own footprint small: agents get only the tools you list, Hub code needs an explicit trust flag, and every run stops after 20 steps. Model-written code runs in your own Python process by default and there is no human approval step, so the safest setup moves that code into a sandbox and puts the boundaries around the process yourself.
 
 | Setup | How | What it gives you |
 |---|---|---|
@@ -49,14 +49,14 @@ smolagents keeps its own footprint small: agents get only the tools you list, Hu
 ## Critical gaps
 - Model-generated code executes in-process by default; the maintainers state the local executor is not a security boundary. (ASI05; C4). Evidence: [src/smolagents/agents.py:1535](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/agents.py#L1535); [SECURITY.md:80](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/SECURITY.md#L80)
 - If a web page the agent reads hijacks it, it can leak data through arbitrary URL fetches and run any registered tool, with no human involved. (ASI01; C5). Evidence: [README.md:61-64](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/README.md#L61-L64); [src/smolagents/default_tools.py:528](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/default_tools.py#L528)
-- .env in the working directory is loaded at import time, letting a cloned repo set endpoints or sandbox credentials (impact inferred). (ASI06; C6). Evidence: [src/smolagents/remote_executors.py:46-48](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/remote_executors.py#L46-L48); [src/smolagents/cli.py:230](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/cli.py#L230)
+- `.env` in the working directory is loaded at import time, letting a cloned repo set endpoints or sandbox credentials (impact inferred). (ASI06; C6). Evidence: [src/smolagents/remote_executors.py:46-48](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/remote_executors.py#L46-L48); [src/smolagents/cli.py:230](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/cli.py#L230)
 - Hub, Space, and MCP tools run in-process with full authority once trust_remote_code=True, which official examples routinely set. (ASI04; C7). Evidence: [src/smolagents/tools.py:1052-1055](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/tools.py#L1052-L1055); [src/smolagents/tools.py:1005](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/tools.py#L1005)
 
 ## Criterion details
 
 ### C1 Identity & least privilege: 0.05 (medium confidence)
 
-smolagents has no notion of an agent identity or per-request authorization: every tool runs in the host process with whatever credentials the developer's environment holds, and importing the remote-executor module silently loads a .env file from the working directory into that environment. The default local executor blocks model code from importing os, which narrows access a little, but its maintainers state it is not a security boundary.
+smolagents has no notion of an agent identity or per-request authorization: every tool runs in the host process with whatever credentials the developer's environment holds, and importing the remote-executor module silently loads a `.env` file from the working directory into that environment. The default local executor blocks model code from importing os, which narrows access a little, but its maintainers state it is not a security boundary.
 
 - **S L0:** No authorization or scoping primitive; tools run with the host process's full authority. Evidence: searched `rg -n -S 'authoriz|permission|scope'` in `src/smolagents/agents.py src/smolagents/tools.py` → 27 hits (hits are import-allowlist names, tool type checks, HTTP-bearer docstrings, license text, and the word 'scope'; none authorizes actions); [src/smolagents/agents.py:987](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/agents.py#L987) (verified)
   - *To reach the next level:* No scoping primitive at all; L1 needs at least a dedicated identity for agent tools.
@@ -70,13 +70,13 @@ smolagents has no notion of an agent identity or per-request authorization: ever
 
 ### C2 Approval gates: 0.00 (high confidence)
 
-There is no approval mechanism anywhere in the tool execution path. Step callbacks fire after a step has already run, and interrupt() is checked between steps. Under the frameworks rule this is L0 even though the bundled tools are read-only: any tool a developer registers executes without a gate, and nothing offers checkpoints or dry-runs.
+There is no human approval mechanism anywhere in the tool execution path. Step callbacks fire after a step has already run, and interrupt() is checked between steps. Under the frameworks rule this is L0 even though the bundled tools are read-only: any tool a developer registers executes without a gate, and nothing offers checkpoints or dry-runs.
 
-- **S L0:** No approval; step_callbacks run after a step executes. Evidence: searched `rg -n -S 'approv|confirm|human_in|ask_user'` in `src/smolagents/` → 4 hits (none in the execution path); [src/smolagents/agents.py:304](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/agents.py#L304); [src/smolagents/agents.py:623](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/agents.py#L623) (verified)
-  - *To reach the next level:* No approval primitive; L1 needs any human approval hook in the tool executor.
+- **S L0:** No human approval; step_callbacks run after a step executes. Evidence: searched `rg -n -S 'approv|confirm|human_in|ask_user'` in `src/smolagents/` → 4 hits (none in the execution path); [src/smolagents/agents.py:304](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/agents.py#L304); [src/smolagents/agents.py:623](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/agents.py#L623) (verified)
+  - *To reach the next level:* No human approval primitive; L1 needs any human approval hook in the tool executor.
 - **C L0:** No gate exists; every registered tool executes directly. Evidence: [src/smolagents/agents.py:1476](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/agents.py#L1476) (verified)
   - *To reach the next level:* Nothing is gated; L1 needs gating on tools flagged as mutating.
-- **D L0:** No approval primitive to default on. Evidence: searched `rg -n -S 'approv|confirm|allow|permission'` in `src/smolagents/gradio_ui.py src/smolagents/cli.py` → 11 hits (only a license comment and file-type allowlist) (verified)
+- **D L0:** No human approval primitive to default on. Evidence: searched `rg -n -S 'approv|confirm|allow|permission'` in `src/smolagents/gradio_ui.py src/smolagents/cli.py` → 11 hits (only a license comment and file-type allowlist) (verified)
   - *To reach the next level:* No gate to enable; L1 needs a gate on by default.
 - **B L0:** No checkpoint, undo, or dry-run primitive bounds a bad action. Evidence: searched `rg -n -S 'checkpoint|undo|rollback|dry_run'` in `src/smolagents/` → 10 hits (all hits are ML model 'checkpoint' names in pipeline tools) (verified)
   - *To reach the next level:* No undo, preview, or rate limit for registered tools; L1 needs some reversibility.
@@ -121,7 +121,7 @@ By default, model-written code runs in an in-process AST interpreter with an imp
 
 ### C5 Untrusted input blast radius: 0.00 (high confidence)
 
-Assume an attacker controls a web page or search result the agent reads. Nothing in smolagents limits what happens next: untrusted content enters the agent's memory like any other observation, the hijacked agent can still fetch any URL (an outbound channel for leaking data), and every tool the developer registered remains available with no approval step. The worst case is therefore data leakage plus whatever irreversible actions the developer's tools allow, with no human involved.
+Assume an attacker controls a web page or search result the agent reads. Nothing in smolagents limits what happens next: untrusted content enters the agent's memory like any other observation, the hijacked agent can still fetch any URL (an outbound channel for leaking data), and every tool the developer registered remains available with no human approval step. The worst case is therefore data leakage plus whatever irreversible actions the developer's tools allow, with no human involved.
 
 - **S L0:** No provenance, taint, or detection; observations stored as-is. Evidence: searched `rg -n -S 'untrusted|taint|provenance|injection|spotlight'` in `src/smolagents/` → 6 hits (hits are pickle warnings, a sandbox-injection docstring, and the executor's own 'not a security sandbox' note; none handles untrusted content); [src/smolagents/memory.py:60](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/memory.py#L60) (verified)
   - *To reach the next level:* No provenance or structural limit; L1 needs at least detection or labelling.
@@ -135,16 +135,16 @@ Assume an attacker controls a web page or search result the agent reads. Nothing
 
 ### C6 Memory, context & configuration integrity: 0.25 (medium confidence)
 
-Agent memory lives only in the running process and is never persisted, which keeps poisoning session-scoped. The concern is configuration: both the CLI and the remote-executor module call load_dotenv(), which reads a .env file from the current working directory. If a user runs an agent inside a cloned repository, that repository can set environment variables such as a model API base URL or a sandbox provider key without any prompt.
+Agent memory lives only in the running process and is never persisted, which keeps poisoning session-scoped. The concern is configuration: both the CLI and the remote-executor module call load_dotenv(), which reads a `.env` file from the current working directory. If a user runs an agent inside a cloned repository, that repository can set environment variables such as a model API base URL or a sandbox provider key without any prompt.
 
-- **S L1:** .env silently loaded from the working directory; no memory persistence. Evidence: [src/smolagents/cli.py:230](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/cli.py#L230); [src/smolagents/remote_executors.py:46-48](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/remote_executors.py#L46-L48); [src/smolagents/agents.py:892](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/agents.py#L892) (verified)
-  - *To reach the next level:* .env loads silently from the working directory; L2 needs security-relevant config to come only from user scope.
+- **S L1:** `.env` silently loaded from the working directory; no memory persistence. Evidence: [src/smolagents/cli.py:230](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/cli.py#L230); [src/smolagents/remote_executors.py:46-48](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/remote_executors.py#L46-L48); [src/smolagents/agents.py:892](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/agents.py#L892) (verified)
+  - *To reach the next level:* `.env` loads silently from the working directory; L2 needs security-relevant config to come only from user scope.
 - **C L1:** The one auto-loaded path is uncontrolled. Evidence: [src/smolagents/cli.py:230](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/cli.py#L230); [src/smolagents/memory.py:53-63](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/memory.py#L53-L63) (verified)
-  - *To reach the next level:* The .env path is uncontrolled; L2 needs every auto-loaded path controlled.
+  - *To reach the next level:* The `.env` path is uncontrolled; L2 needs every auto-loaded path controlled.
 - **D L2:** Memory is per agent instance and never shared. Evidence: [src/smolagents/agents.py:602](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/agents.py#L602) (verified)
   - *To reach the next level:* Memory isolation per instance only; L3 needs the model unable to alter isolation (already true) plus enforced namespaces.
-- **B L2:** A repo .env persists across runs and could set OPENAI_BASE_URL (read by the openai SDK) or E2B_API_KEY; memory is session-scoped. Evidence: [src/smolagents/remote_executors.py:46-48](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/remote_executors.py#L46-L48); [src/smolagents/memory.py:53](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/memory.py#L53) (inferred)
-  - *To reach the next level:* A repo .env persists across runs; L3 needs nothing workspace-controlled to persist into behaviour.
+- **B L2:** A repo `.env` persists across runs and could set OPENAI_BASE_URL (read by the openai SDK) or E2B_API_KEY; memory is session-scoped. Evidence: [src/smolagents/remote_executors.py:46-48](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/remote_executors.py#L46-L48); [src/smolagents/memory.py:53](https://github.com/huggingface/smolagents/blob/c30b115286e000e98711fae5e85993547b73d826/src/smolagents/memory.py#L53) (inferred)
+  - *To reach the next level:* A repo `.env` persists across runs; L3 needs nothing workspace-controlled to persist into behaviour.
 - **Cap:** C6-REPOCONFIG: load_dotenv() from the working directory (verified) lets a cloned repo redirect security-relevant endpoints or credentials (impact inferred from openai SDK env handling).
 
 ### C7 Third-party extensions: 0.12 (high confidence)
@@ -213,7 +213,7 @@ Runs stop after 20 steps by default and each code execution has a timeout, but t
 2. Add an approval hook in the tool executor, consulted for every registered tool, with default-deny for unknown tools. (C2 S L0→L2, +0.150 before caps; Playbook 5, step 1)
 3. Tag observations with provenance and disable egress tools after untrusted content enters the session. (C5 S L0→L3, +0.225 before caps; Playbook 1, step 2)
 4. Block internal addresses and recheck redirects in visit_webpage. (C3 S L1→L3, +0.150 before caps; Playbook 3, step 1)
-5. Load .env only from the user's config directory, never the working directory. (C6 S L1→L3, +0.150 before caps; Playbook 2, step 1)
+5. Load `.env` only from the user's config directory, never the working directory. (C6 S L1→L3, +0.150 before caps; Playbook 2, step 1)
 
 ## Re-audit log
 - C4 C: L2 → L3. Alt mechanism: send_tools defines registered tools inside the sandbox (remote_executors.py:94-112); was inferred, now verified. No score change (G1).

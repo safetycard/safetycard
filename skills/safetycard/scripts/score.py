@@ -29,7 +29,7 @@ import subprocess
 import sys
 
 SCHEMA_VERSION = "2.0"
-SCORECARD_VERSION = "0.9"
+SCORECARD_VERSION = "0.9.2"
 WEIGHTS = {"S": 0.30, "C": 0.30, "D": 0.20, "B": 0.20}
 PARAM_NAMES = {"S": "Strength", "C": "Coverage", "D": "Default & tamper-resistance", "B": "Blast radius"}
 FRACTION = {0: 0.0, 1: 0.25, 2: 0.5, 3: 0.75, 4: 1.0}
@@ -118,7 +118,7 @@ class Problems:
         self.warnings.append(msg)
 
 
-# ---------------------------------------------------------------- evidence
+# ---------------- evidence
 
 _REQUIRED_SEEN = set()
 
@@ -195,9 +195,12 @@ def recheck_search(ev, tag, P, repo):
     except ValueError:
         P.warn(f"{tag}: could not parse search/scope for re-check")
         return
-    if not argv or argv[0] != "rg" or any(a in ("--pre", "--pre-glob") for a in argv):
+    runs_program = ("--pre", "--pre-glob", "--hostname-bin")  # rg options that run another program
+    if not argv or argv[0] != "rg" or any(a.split("=", 1)[0] in runs_program for a in argv):
         return  # only plain ripgrep searches are re-run
-    paths = [x for x in scope if os.path.exists(os.path.join(repo, x))]
+    root = os.path.realpath(repo)
+    paths = [x for x in scope if os.path.exists(os.path.join(repo, x))
+             and os.path.commonpath([root, os.path.realpath(os.path.join(repo, x))]) == root]
     if not paths:
         P.warn(f"{tag}: search scope {ev['scope']!r} not found in repo; hits not re-checked")
         return
@@ -224,7 +227,7 @@ def permalink(repo_url, commit, ev):
     return f"https://github.com/{m.group(1)}/{m.group(2)}/blob/{commit}/{ev['file']}{frag}"
 
 
-# ---------------------------------------------------------------- scoring
+# ---------------- scoring
 
 def score_mechanism(cid, params, caps, label, P, repo, kind):
     tag = f"{cid}{'' if kind == 'default' else ' (alt)'}"
@@ -492,8 +495,8 @@ def build_entry(card, P, repo=None):
         check_evidence(f.get("evidence"), f"critical_findings[{i}]", P, repo)
         require_contains(f.get("evidence"), f"critical_findings[{i}]", P, "critical finding")
     r2 = card["rule_of_two"]
-    if not isinstance(r2, dict) or set(r2) != {"untrusted_input", "sensitive_data", "state_change_or_egress",
-                                               "same_session"} or not isinstance(r2.get("same_session"), bool):
+    r2_keys = {"untrusted_input", "sensitive_data", "state_change_or_egress", "same_session"}
+    if not isinstance(r2, dict) or set(r2) != r2_keys or not isinstance(r2.get("same_session"), bool):
         P.err("rule_of_two needs untrusted_input, sensitive_data, state_change_or_egress (strings), same_session (bool)")
     fixes = []
     if not isinstance(card["fixes"], list) or len(card["fixes"]) > 5:
@@ -588,7 +591,7 @@ def schema_check(entry, P):
         P.err(f"schema: {'/'.join(map(str, e.path)) or '(root)'}: {e.message[:200]}")
 
 
-# ---------------------------------------------------------------- rendering
+# ---------------- rendering
 
 def lv(p):
     return "SA" if p["structural_absence"] else f"L{p['level']}"
@@ -737,8 +740,8 @@ EXAMPLE["criteria"][3]["alt"] = {"label": "opt-in container sandbox", "parameter
                                  "caps": []}
 EXAMPLE["criteria"][5] = {"id": "C6", "summary": "No memory or auto-loaded workspace context exists.",
                           "structural_absence": True,
-                          "absence_evidence": [{"search": "rg -n -S 'memory|dotenv|AGENTS.md'", "scope": "src/",
-                                                "hits": 0}]}
+                          "absence_evidence": [
+                              {"search": "rg -n -S 'memory|dotenv|AGENTS.md'", "scope": "src/", "hits": 0}]}
 
 
 def main(argv):
